@@ -118,7 +118,7 @@
 
         <!-- Game Info & Controls -->
         <div class="flex flex-col items-center justify-start gap-4 w-full lg:max-w-sm">
-            <h1 class="text-3xl md:text-4xl font-bold text-center text-white">Learning Chess AI</h1>
+            <h1 class="text-3xl md:text-4xl font-bold text-center text-white">Smarter Chess AI</h1>
             
             <div id="status" class="text-lg font-semibold bg-gray-900/50 p-3 rounded-lg text-center w-full border border-gray-700">White's Turn</div>
             <div id="ai-mode" class="text-sm font-medium bg-gray-900/50 p-2 rounded-lg text-center w-full text-gray-400 border border-gray-700">AI Mode: Internal Logic</div>
@@ -535,12 +535,54 @@
                         }
                     }
                 }
+                
+                // Add mobility score
+                const whiteMoves = game.getAllMoves('w').length;
+                const blackMoves = game.getAllMoves('b').length;
+                const mobilityScore = (whiteMoves - blackMoves) * 10; // 10 centipawns per move advantage
+                total += mobilityScore;
+
                 return total;
             }
             
+            quiescenceSearch(game, alpha, beta, maximizingPlayer) {
+                const stand_pat = this.evaluateBoard(game);
+
+                if (maximizingPlayer) {
+                    if (stand_pat >= beta) return beta;
+                    if (stand_pat > alpha) alpha = stand_pat;
+                } else {
+                    if (stand_pat <= alpha) return alpha;
+                    if (stand_pat < beta) beta = stand_pat;
+                }
+
+                const allMoves = game.getAllMoves(game.turn);
+                const captureMoves = allMoves.filter(move => move.capture);
+
+                for (const move of captureMoves) {
+                    const tempGame = this.cloneGame(game);
+                    tempGame.move(move);
+                    const score = this.quiescenceSearch(tempGame, alpha, beta, !maximizingPlayer);
+
+                    if (maximizingPlayer) {
+                        if (score >= beta) return beta;
+                        if (score > alpha) alpha = score;
+                    } else {
+                        if (score <= alpha) return alpha;
+                        if (score < beta) beta = score;
+                    }
+                }
+                return maximizingPlayer ? alpha : beta;
+            }
+
             minimax(game, depth, alpha, beta, maximizingPlayer) {
-                if (depth === 0 || game.gameOver) {
-                    return this.evaluateBoard(game);
+                if (game.gameOver) {
+                    if (game.isCheckmate(game.turn)) return maximizingPlayer ? -100000 : 100000;
+                    return 0; // Stalemate
+                }
+
+                if (depth === 0) {
+                    return this.quiescenceSearch(game, alpha, beta, maximizingPlayer);
                 }
 
                 const allMoves = game.getAllMoves(maximizingPlayer ? 'b' : 'w');
@@ -580,7 +622,7 @@
                 for (const move of allMoves) {
                     const tempGame = this.cloneGame(game);
                     tempGame.move(move);
-                    const boardValue = this.minimax(tempGame, 2, -Infinity, Infinity, false);
+                    const boardValue = this.minimax(tempGame, 3, -Infinity, Infinity, false);
                     
                     if (boardValue > bestValue) {
                         bestValue = boardValue;
@@ -796,7 +838,6 @@
             draggedPieceElement = pieceEl.cloneNode(true);
             draggedPieceElement.classList.add('dragging');
             
-            // --- FIX: Set explicit size for dragged piece ---
             const rect = sourceSquareElement.getBoundingClientRect();
             draggedPieceElement.style.width = `${rect.width}px`;
             draggedPieceElement.style.height = `${rect.height}px`;
