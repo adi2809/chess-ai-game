@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learning Chess AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+            background-color: #1f2937; /* gray-800 */
+        }
+        .board-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 90vw;
+            height: 90vw;
+            max-width: 80vh;
+            max-height: 80vh;
+            background-image: url('https://images.chesscomfiles.com/chess-themes/boards/wood/150.jpg');
+            border: 2px solid #4B5563; /* gray-600 */
+            border-radius: 0.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+        }
+        .square {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .square.light {
+            background-color: rgba(240, 217, 181, 0.5);
+        }
+        .square.dark {
+            background-color: rgba(181, 136, 99, 0.5);
+        }
+        .piece {
+            width: 90%;
+            height: 90%;
+            cursor: grab;
+            position: relative;
+            z-index: 10;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4));
+        }
+        .piece.dragging {
+            position: absolute;
+            opacity: 0.8;
+            cursor: grabbing;
+            z-index: 1000;
+            pointer-events: none;
+            transform: scale(1.1);
+        }
+        .valid-move-dot {
+            width: 35%;
+            height: 35%;
+            background-color: rgba(34, 197, 94, 0.4);
+            border-radius: 50%;
+            position: absolute;
+            z-index: 5;
+            pointer-events: none;
+        }
+        .capture-move-ring {
+            width: 100%;
+            height: 100%;
+            border: 5px solid rgba(239, 68, 68, 0.4);
+            border-radius: 50%;
+            position: absolute;
+            z-index: 5;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+        #message-box {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+        #analysis-box {
+            max-height: 250px;
+            overflow-y: auto;
+            transition: all 0.3s ease-in-out;
+        }
+        .eval-bar-container {
+            width: 24px;
+            height: 90%;
+            background-color: #374151; /* gray-700 */
+            border-radius: 0.25rem;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .eval-bar {
+            width: 100%;
+            background-color: #f9fafb; /* gray-50 */
+            transition: height 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body class="text-gray-200 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-6xl mx-auto flex flex-col lg:flex-row items-center lg:items-start justify-center gap-8">
+        
+        <div class="board-container">
+             <!-- Eval Bar -->
+            <div id="eval-bar-container" class="eval-bar-container">
+                <div id="eval-bar" class="eval-bar" style="height: 50%;"></div>
+            </div>
+            <!-- Chess Board -->
+            <div id="board" class="board"></div>
+        </div>
+
+        <!-- Game Info & Controls -->
+        <div class="flex flex-col items-center justify-start gap-4 w-full lg:max-w-sm">
+            <h1 class="text-3xl md:text-4xl font-bold text-center text-white">Learning Chess AI</h1>
+            
+            <div id="status" class="text-lg font-semibold bg-gray-900/50 p-3 rounded-lg text-center w-full border border-gray-700">White's Turn</div>
+            <div id="ai-mode" class="text-sm font-medium bg-gray-900/50 p-2 rounded-lg text-center w-full text-gray-400 border border-gray-700">AI Mode: Internal Logic</div>
+
+            <div id="message-box" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white p-6 rounded-xl shadow-2xl text-2xl font-bold opacity-0 scale-90 pointer-events-none">
+                <p id="message-text"></p>
+            </div>
+            
+            <div class="w-full space-y-3 mt-4">
+                 <button id="analysis-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform hover:scale-105 w-full flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>
+                    Get AI Analysis
+                </button>
+                 <button id="trash-talk-button" class="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform hover:scale-105 w-full flex items-center justify-center gap-2">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v-3.5a2.5 2.5 0 1 1 5 0V15"></path><path d="M10 15H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-5"></path><path d="M6 11h2"></path><path d="M16 11h2"></path></svg>
+                    Trash Talk
+                </button>
+            </div>
+
+            <div id="analysis-box" class="w-full bg-gray-900/50 p-4 rounded-lg mt-4 border border-gray-700 hidden">
+                <h3 class="text-lg font-bold text-green-400 mb-2">AI Coach Analysis</h3>
+                <p id="analysis-text" class="text-gray-300 whitespace-pre-wrap">Click "Get AI Analysis" to get a hint.</p>
+            </div>
+
+            <div class="w-full space-y-3 mt-4">
+                <button id="reset-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform hover:scale-105 w-full">
+                    New Game
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- Game Logic ---
+        class Chess {
+            constructor() {
+                this.board = this.setupBoard();
+                this.turn = 'w';
+                this.history = [];
+                this.gameOver = false;
+                this.castlingRights = { w: { k: true, q: true }, b: { k: true, q: true } };
+                this.enPassantTarget = null;
+            }
+
+            setupBoard() {
+                const board = new Array(8).fill(null).map(() => new Array(8).fill(null));
+                const place = (piece, x, y) => { board[y][x] = piece; };
+
+                for (let i = 0; i < 8; i++) {
+                    place({ type: 'p', color: 'w' }, i, 6);
+                    place({ type: 'p', color: 'b' }, i, 1);
+                }
+                place({ type: 'r', color: 'w' }, 0, 7); place({ type: 'r', color: 'w' }, 7, 7);
+                place({ type: 'r', color: 'b' }, 0, 0); place({ type: 'r', color: 'b' }, 7, 0);
+                place({ type: 'n', color: 'w' }, 1, 7); place({ type: 'n', color: 'w' }, 6, 7);
+                place({ type: 'n', color: 'b' }, 1, 0); place({ type: 'n', color: 'b' }, 6, 0);
+                place({ type: 'b', color: 'w' }, 2, 7); place({ type: 'b', color: 'w' }, 5, 7);
+                place({ type: 'b', color: 'b' }, 2, 0); place({ type: 'b', color: 'b' }, 5, 0);
+                place({ type: 'q', color: 'w' }, 3, 7); place({ type: 'q', color: 'b' }, 3, 0);
+                place({ type: 'k', color: 'w' }, 4, 7); place({ type: 'k', color: 'b' }, 4, 0);
+                
+                return board;
+            }
+
+            getMoves(from) {
+                const piece = this.board[from.y][from.x];
+                if (!piece) return [];
+
+                const moves = [];
+                const { type, color } = piece;
+
+                const addMove = (to) => {
+                    if (to.x >= 0 && to.x < 8 && to.y >= 0 && to.y < 8) {
+                        const target = this.board[to.y][to.x];
+                        if (!target) {
+                            moves.push({ from, to });
+                        } else if (target.color !== color) {
+                            moves.push({ from, to, capture: true });
+                        }
+                        return !target;
+                    }
+                    return false;
+                };
+                
+                const addSlidingMoves = (directions) => {
+                    for (const [dx, dy] of directions) {
+                        let current = { x: from.x + dx, y: from.y + dy };
+                        while(addMove(current)) {
+                            current = { x: current.x + dx, y: current.y + dy };
+                        }
+                    }
+                };
+
+                if (type === 'p') {
+                    const dir = color === 'w' ? -1 : 1;
+                    const startRow = color === 'w' ? 6 : 1;
+                    if (from.y + dir >= 0 && from.y + dir < 8 && !this.board[from.y + dir][from.x]) {
+                        moves.push({ from, to: { x: from.x, y: from.y + dir } });
+                        if (from.y === startRow && !this.board[from.y + 2 * dir][from.x]) {
+                            moves.push({ from, to: { x: from.x, y: from.y + 2 * dir }, flags: 'pawn-two-squares' });
+                        }
+                    }
+                    for (const dx of [-1, 1]) {
+                        if (from.x + dx >= 0 && from.x + dx < 8 && from.y + dir >= 0 && from.y + dir < 8) {
+                            const target = this.board[from.y + dir][from.x + dx];
+                            if (target && target.color !== color) {
+                                moves.push({ from, to: { x: from.x + dx, y: from.y + dir }, capture: true });
+                            }
+                            if (this.enPassantTarget && this.enPassantTarget.x === from.x + dx && this.enPassantTarget.y === from.y + dir) {
+                                moves.push({ from, to: { x: from.x + dx, y: from.y + dir }, capture: true, flags: 'en-passant' });
+                            }
+                        }
+                    }
+                } else if (type === 'n') {
+                    const directions = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+                    for (const [dx, dy] of directions) addMove({ x: from.x + dx, y: from.y + dy });
+                } else if (type === 'b') addSlidingMoves([[-1,-1],[-1,1],[1,-1],[1,1]]);
+                else if (type === 'r') addSlidingMoves([[-1,0],[1,0],[0,-1],[0,1]]);
+                else if (type === 'q') addSlidingMoves([[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]);
+                else if (type === 'k') {
+                    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+                        if (dx === 0 && dy === 0) continue;
+                        addMove({ x: from.x + dx, y: from.y + dy });
+                    }
+                    const opponentColor = color === 'w' ? 'b' : 'w';
+                    if (this.castlingRights[color].k && !this.board[from.y][from.x+1] && !this.board[from.y][from.x+2] &&
+                        !this.isSquareAttacked(from, opponentColor) &&
+                        !this.isSquareAttacked({x: from.x+1, y: from.y}, opponentColor) &&
+                        !this.isSquareAttacked({x: from.x+2, y: from.y}, opponentColor)) {
+                        moves.push({ from, to: { x: from.x + 2, y: from.y }, flags: 'castle-k' });
+                    }
+                    if (this.castlingRights[color].q && !this.board[from.y][from.x-1] && !this.board[from.y][from.x-2] && !this.board[from.y][from.x-3] &&
+                        !this.isSquareAttacked(from, opponentColor) &&
+                        !this.isSquareAttacked({x: from.x-1, y: from.y}, opponentColor) &&
+                        !this.isSquareAttacked({x: from.x-2, y: from.y}, opponentColor)) {
+                         moves.push({ from, to: { x: from.x - 2, y: from.y }, flags: 'castle-q' });
+                    }
+                }
+                
+                return moves.filter(move => !this.moveLeavesKingInCheck(move));
+            }
+            
+            findKing(color) {
+                for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+                    const piece = this.board[y][x];
+                    if (piece && piece.type === 'k' && piece.color === color) return { x, y };
+                }
+                return null;
+            }
+
+            isSquareAttacked(pos, byColor) {
+                for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+                    const piece = this.board[y][x];
+                    if (piece && piece.color === byColor) {
+                        const moves = this.getRawMoves({x, y});
+                        if (moves.some(m => m.to.x === pos.x && m.to.y === pos.y)) return true;
+                    }
+                }
+                return false;
+            }
+
+            getRawMoves(from) {
+                const piece = this.board[from.y][from.x];
+                if (!piece) return [];
+                const moves = [];
+                const { type, color } = piece;
+
+                const addMoveAndSlide = (to) => {
+                    if (to.x >= 0 && to.x < 8 && to.y >= 0 && to.y < 8) {
+                        moves.push({ from, to });
+                        return !this.board[to.y][to.x];
+                    }
+                    return false;
+                };
+                const addSlidingMoves = (directions) => {
+                    for (const [dx, dy] of directions) {
+                        let current = { x: from.x + dx, y: from.y + dy };
+                        while(addMoveAndSlide(current)) current = { x: current.x + dx, y: current.y + dy };
+                    }
+                };
+                const addSingleMove = (to) => {
+                     if (to.x >= 0 && to.x < 8 && to.y >= 0 && to.y < 8) moves.push({ from, to });
+                }
+
+                if (type === 'p') {
+                    const dir = color === 'w' ? -1 : 1;
+                    if (from.y + dir >= 0 && from.y + dir < 8) {
+                        if (from.x - 1 >= 0) addSingleMove({ x: from.x - 1, y: from.y + dir });
+                        if (from.x + 1 < 8)  addSingleMove({ x: from.x + 1, y: from.y + dir });
+                    }
+                } else if (type === 'n') {
+                    const directions = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+                    for (const [dx, dy] of directions) addSingleMove({ x: from.x + dx, y: from.y + dy });
+                } else if (type === 'b') addSlidingMoves([[-1,-1],[-1,1],[1,-1],[1,1]]);
+                else if (type === 'r') addSlidingMoves([[-1,0],[1,0],[0,-1],[0,1]]);
+                else if (type === 'q') addSlidingMoves([[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]);
+                else if (type === 'k') {
+                    const directions = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
+                     for (const [dx, dy] of directions) addSingleMove({ x: from.x + dx, y: from.y + dy });
+                }
+                return moves;
+            }
+
+            moveLeavesKingInCheck(move) {
+                const { from, to } = move;
+                const piece = this.board[from.y][from.x];
+                const target = this.board[to.y][to.x];
+                
+                this.board[to.y][to.x] = piece;
+                this.board[from.y][from.x] = null;
+
+                const kingPos = this.findKing(piece.color);
+                const inCheck = kingPos ? this.isSquareAttacked(kingPos, piece.color === 'w' ? 'b' : 'w') : false;
+
+                this.board[from.y][from.x] = piece;
+                this.board[to.y][to.x] = target;
+
+                return inCheck;
+            }
+
+            isInCheck(color) {
+                const kingPos = this.findKing(color);
+                if (!kingPos) return false;
+                return this.isSquareAttacked(kingPos, color === 'w' ? 'b' : 'w');
+            }
+            
+            isCheckmate(color) {
+                if (!this.isInCheck(color)) return false;
+                return this.getAllMoves(color).length === 0;
+            }
+            
+            isStalemate(color) {
+                if (this.isInCheck(color)) return false;
+                return this.getAllMoves(color).length === 0;
+            }
+
+            getAllMoves(color) {
+                const moves = [];
+                for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+                    const piece = this.board[y][x];
+                    if (piece && piece.color === color) moves.push(...this.getMoves({x, y}));
+                }
+                return moves;
+            }
+
+            move(move) {
+                const {from, to} = move;
+                const piece = this.board[from.y][from.x];
+                if (!piece || piece.color !== this.turn) return false;
+
+                const validMoves = this.getMoves(from);
+                const realMove = validMoves.find(m => m.to.x === to.x && m.to.y === to.y);
+                if (!realMove) return false;
+                
+                this.history.push({ 
+                    move: { from, to }, board: JSON.parse(JSON.stringify(this.board)),
+                    turn: this.turn, castlingRights: JSON.parse(JSON.stringify(this.castlingRights)),
+                    enPassantTarget: this.enPassantTarget
+                });
+                
+                this.enPassantTarget = null;
+                
+                this.board[to.y][to.x] = piece;
+                this.board[from.y][from.x] = null;
+                
+                if (realMove.flags === 'pawn-two-squares') {
+                    this.enPassantTarget = { x: from.x, y: from.y + (piece.color === 'w' ? -1 : 1) };
+                } else if (realMove.flags === 'en-passant') {
+                    const capturedPawnY = to.y + (piece.color === 'w' ? 1 : -1);
+                    this.board[capturedPawnY][to.x] = null;
+                } else if (realMove.flags === 'castle-k') {
+                    const rook = this.board[from.y][7];
+                    this.board[from.y][5] = rook; this.board[from.y][7] = null;
+                } else if (realMove.flags === 'castle-q') {
+                    const rook = this.board[from.y][0];
+                    this.board[from.y][3] = rook; this.board[from.y][0] = null;
+                }
+
+                if (piece.type === 'p' && (to.y === 0 || to.y === 7)) {
+                    this.board[to.y][to.x] = { type: 'q', color: piece.color };
+                }
+                
+                if (piece.type === 'k') this.castlingRights[piece.color] = { k: false, q: false };
+                if (piece.type === 'r') {
+                    if (from.x === 0 && from.y === (piece.color === 'w' ? 7 : 0)) this.castlingRights[piece.color].q = false;
+                    if (from.x === 7 && from.y === (piece.color === 'w' ? 7 : 0)) this.castlingRights[piece.color].k = false;
+                }
+
+                this.turn = this.turn === 'w' ? 'b' : 'w';
+                
+                if (this.isCheckmate(this.turn)) {
+                    this.gameOver = true; this.winner = this.turn === 'w' ? 'b' : 'w';
+                } else if (this.isStalemate(this.turn)) {
+                    this.gameOver = true; this.winner = 'draw';
+                }
+
+                return true;
+            }
+
+            toFEN() {
+                let fen = '';
+                for (let y = 0; y < 8; y++) {
+                    let empty = 0;
+                    for (let x = 0; x < 8; x++) {
+                        const piece = this.board[y][x];
+                        if (piece) {
+                            if (empty > 0) { fen += empty; empty = 0; }
+                            let char = piece.type;
+                            fen += piece.color === 'w' ? char.toUpperCase() : char;
+                        } else { empty++; }
+                    }
+                    if (empty > 0) fen += empty;
+                    if (y < 7) fen += '/';
+                }
+                fen += ` ${this.turn}`;
+                
+                let castleStr = '';
+                if (this.castlingRights.w.k) castleStr += 'K';
+                if (this.castlingRights.w.q) castleStr += 'Q';
+                if (this.castlingRights.b.k) castleStr += 'k';
+                if (this.castlingRights.b.q) castleStr += 'q';
+                fen += ` ${castleStr || '-'}`;
+
+                if (this.enPassantTarget) {
+                    const col = String.fromCharCode('a'.charCodeAt(0) + this.enPassantTarget.x);
+                    const row = 8 - this.enPassantTarget.y;
+                    fen += ` ${col}${row}`;
+                } else { fen += ' -'; }
+                
+                fen += ' 0 1';
+                return fen;
+            }
+        }
+
+        // --- AI Logic ---
+        class ChessAI {
+            constructor() {
+                this.baseWeights = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+                this.pst = {
+                    'p': [
+                        [0,  0,  0,  0,  0,  0,  0,  0],
+                        [50, 50, 50, 50, 50, 50, 50, 50],
+                        [10, 10, 20, 30, 30, 20, 10, 10],
+                        [5,  5, 10, 25, 25, 10,  5,  5],
+                        [0,  0,  0, 20, 20,  0,  0,  0],
+                        [5, -5,-10,  0,  0,-10, -5,  5],
+                        [5, 10, 10,-20,-20, 10, 10,  5],
+                        [0,  0,  0,  0,  0,  0,  0,  0]
+                    ],
+                    'n': [
+                        [-50,-40,-30,-30,-30,-30,-40,-50],
+                        [-40,-20,  0,  0,  0,  0,-20,-40],
+                        [-30,  0, 10, 15, 15, 10,  0,-30],
+                        [-30,  5, 15, 20, 20, 15,  5,-30],
+                        [-30,  0, 15, 20, 20, 15,  0,-30],
+                        [-30,  5, 10, 15, 15, 10,  5,-30],
+                        [-40,-20,  0,  5,  5,  0,-20,-40],
+                        [-50,-40,-30,-30,-30,-30,-40,-50]
+                    ],
+                    'b': [
+                        [-20,-10,-10,-10,-10,-10,-10,-20],
+                        [-10,  0,  0,  0,  0,  0,  0,-10],
+                        [-10,  0,  5, 10, 10,  5,  0,-10],
+                        [-10,  5,  5, 10, 10,  5,  5,-10],
+                        [-10,  0, 10, 10, 10, 10,  0,-10],
+                        [-10, 10, 10, 10, 10, 10, 10,-10],
+                        [-10,  5,  0,  0,  0,  0,  5,-10],
+                        [-20,-10,-10,-10,-10,-10,-10,-20]
+                    ],
+                    'r': [
+                        [0,  0,  0,  0,  0,  0,  0,  0],
+                        [5, 10, 10, 10, 10, 10, 10,  5],
+                        [-5,  0,  0,  0,  0,  0,  0, -5],
+                        [-5,  0,  0,  0,  0,  0,  0, -5],
+                        [-5,  0,  0,  0,  0,  0,  0, -5],
+                        [-5,  0,  0,  0,  0,  0,  0, -5],
+                        [-5,  0,  0,  0,  0,  0,  0, -5],
+                        [0,  0,  0,  5,  5,  0,  0,  0]
+                    ],
+                    'q': [
+                        [-20,-10,-10, -5, -5,-10,-10,-20],
+                        [-10,  0,  0,  0,  0,  0,  0,-10],
+                        [-10,  0,  5,  5,  5,  5,  0,-10],
+                        [-5,  0,  5,  5,  5,  5,  0, -5],
+                        [0,  0,  5,  5,  5,  5,  0, -5],
+                        [-10,  5,  5,  5,  5,  5,  0,-10],
+                        [-10,  0,  5,  0,  0,  0,  0,-10],
+                        [-20,-10,-10, -5, -5,-10,-10,-20]
+                    ],
+                     'k': [
+                        [-30,-40,-40,-50,-50,-40,-40,-30],
+                        [-30,-40,-40,-50,-50,-40,-40,-30],
+                        [-30,-40,-40,-50,-50,-40,-40,-30],
+                        [-30,-40,-40,-50,-50,-40,-40,-30],
+                        [-20,-30,-30,-40,-40,-30,-30,-20],
+                        [-10,-20,-20,-20,-20,-20,-20,-10],
+                        [20, 20,  0,  0,  0,  0, 20, 20],
+                        [20, 30, 10,  0,  0, 10, 30, 20]
+                    ],
+                };
+            }
+
+            evaluateBoard(game) {
+                let total = 0;
+                for (let y = 0; y < 8; y++) {
+                    for (let x = 0; x < 8; x++) {
+                        const piece = game.board[y][x];
+                        if (piece) {
+                            const sign = piece.color === 'w' ? 1 : -1;
+                            const material = this.baseWeights[piece.type];
+                            const positionY = piece.color === 'w' ? y : 7 - y;
+                            const positional = this.pst[piece.type][positionY][x];
+                            total += (material + positional) * sign;
+                        }
+                    }
+                }
+                return total;
+            }
+            
+            minimax(game, depth, alpha, beta, maximizingPlayer) {
+                if (depth === 0 || game.gameOver) {
+                    return this.evaluateBoard(game);
+                }
+
+                const allMoves = game.getAllMoves(maximizingPlayer ? 'b' : 'w');
+                
+                if (maximizingPlayer) {
+                    let maxEval = -Infinity;
+                    for (const move of allMoves) {
+                        const tempGame = this.cloneGame(game);
+                        tempGame.move(move);
+                        const evaluation = this.minimax(tempGame, depth - 1, alpha, beta, false);
+                        maxEval = Math.max(maxEval, evaluation);
+                        alpha = Math.max(alpha, evaluation);
+                        if (beta <= alpha) break;
+                    }
+                    return maxEval;
+                } else {
+                    let minEval = Infinity;
+                    for (const move of allMoves) {
+                        const tempGame = this.cloneGame(game);
+                        tempGame.move(move);
+                        const evaluation = this.minimax(tempGame, depth - 1, alpha, beta, true);
+                        minEval = Math.min(minEval, evaluation);
+                        beta = Math.min(beta, evaluation);
+                        if (beta <= alpha) break;
+                    }
+                    return minEval;
+                }
+            }
+            
+            findBestMove(game) {
+                const allMoves = game.getAllMoves('b');
+                if (allMoves.length === 0) return null;
+
+                let bestValue = -Infinity;
+                let bestMoves = [];
+
+                for (const move of allMoves) {
+                    const tempGame = this.cloneGame(game);
+                    tempGame.move(move);
+                    const boardValue = this.minimax(tempGame, 2, -Infinity, Infinity, false);
+                    
+                    if (boardValue > bestValue) {
+                        bestValue = boardValue;
+                        bestMoves = [move];
+                    } else if (boardValue === bestValue) {
+                        bestMoves.push(move);
+                    }
+                }
+                return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+            }
+            
+            cloneGame(game) {
+                const newGame = new Chess();
+                newGame.board = JSON.parse(JSON.stringify(game.board));
+                newGame.turn = game.turn;
+                newGame.history = JSON.parse(JSON.stringify(game.history));
+                newGame.gameOver = game.gameOver;
+                newGame.castlingRights = JSON.parse(JSON.stringify(game.castlingRights));
+                newGame.enPassantTarget = game.enPassantTarget;
+                return newGame;
+            }
+        }
+
+        // --- UI Logic ---
+        const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('status');
+        const aiModeElement = document.getElementById('ai-mode');
+        const resetButton = document.getElementById('reset-button');
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const analysisButton = document.getElementById('analysis-button');
+        const trashTalkButton = document.getElementById('trash-talk-button');
+        const analysisBox = document.getElementById('analysis-box');
+        const analysisText = document.getElementById('analysis-text');
+        const evalBar = document.getElementById('eval-bar');
+
+        let game = new Chess();
+        const ai = new ChessAI();
+        let selectedSquare = null;
+        let validMoves = [];
+        let draggedPieceElement = null;
+
+        const pieceSVGs = {
+            'w': {
+                'p': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47C28.06 24.84 29 23.03 29 21c0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z"/></g></svg>`,
+                'r': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12.5 32l1.5-2.5h17l1.5 2.5h-20zM12 36v-4h21v4H12z" stroke-linecap="butt"/><path d="M14 29.5v-13h17v13H14z" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M14 16.5L11 14h23l-3 2.5H14zM11 14V9h4v2h5V9h5v2h5V9h4v5H11z" stroke-linecap="butt"/><path d="M12 35.5h21M13 31.5h19M14.5 29.5h16M11.5 14.5h22" fill="none"/></g></svg>`,
+                'n': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10c1.1 0 2 .9 2 2v2.5c0 .55.45 1 1 1s1-.45 1-1V12c0-2.21-1.79-4-4-4-3.23 0-5.92 2.54-6.2 5.76-.22 2.4-1.83 4.24-3.8 4.24-2.21 0-4-1.79-4-4s1.79-4 4-4c.9 0 1.71.3 2.36.79.6-.55 1.46-.86 2.43-.86 2.21 0 4 1.79 4 4v.5a.5.5 0 0 1-1 0V12c0-1.1-.9-2-2-2zM9.5 24c1.42-1.42 3.58-2.5 6.5-2.5s5.08 1.08 6.5 2.5c-1.42 1.42-3.58 2.5-6.5 2.5s-5.08-1.08-6.5-2.5z"/><path d="M12.5 37c-2.5-1.5-4-4.5-4-7.5 0-4.5 2.5-8.5 6-8.5s6 4 6 8.5c0 3-1.5 6-4 7.5l-2-2.5-2 2.5z"/><path d="M25 18a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" fill="#000"/><path d="M25 18a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" stroke="none"/></g></svg>`,
+                'b': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2-3.39.97-10.11-.43-13.5 2-3.39-2.43-10.11-1.03-13.5-2zM15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g></svg>`,
+                'q': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM24.5 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 8.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM33 9a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/><path d="M9 26c8.5-1.5 19-1.5 27 0l2-12-29 0-2 12z" fill-rule="evenodd"/><path d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c4-1 17-1 21 0" fill="none"/><path d="M10.5 26.5l24 0" fill="none" stroke-linejoin="miter"/><path d="M9 39.5h27v-3H9v3zM12 36.5h21v-3H12v3z" fill-rule="evenodd"/></g></svg>`,
+                'k': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6M20 8h5" stroke-linecap="butt"/><path d="M22.5 25c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/><path d="M11.5 38.5h22v-4h-22v4z" stroke-linecap="butt"/><path d="M11.5 34.5h22l-1.5-6.5-19 0-1.5 6.5z" stroke-linecap="butt"/><path d="M11.5 34.5c0 .83.67 1.5 1.5 1.5h19c.83 0 1.5-.67 1.5-1.5v-1c0-.83-.67-1.5-1.5-1.5h-19c-.83 0-1.5.67-1.5 1.5v1z" stroke-linecap="butt"/><path d="M22.5 11.5l-3.5 13.5h7L22.5 11.5z" stroke-linejoin="miter"/></g></svg>`
+            },
+            'b': {
+                'p': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47C28.06 24.84 29 23.03 29 21c0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z"/></g></svg>`,
+                'r': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 39h27v-3H9v3zM12.5 32l1.5-2.5h17l1.5 2.5h-20zM12 36v-4h21v4H12z" stroke-linecap="butt"/><path d="M14 29.5v-13h17v13H14z" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M14 16.5L11 14h23l-3 2.5H14zM11 14V9h4v2h5V9h5v2h5V9h4v5H11z" stroke-linecap="butt"/><path d="M12 35.5h21M13 31.5h19M14.5 29.5h16M11.5 14.5h22" fill="none"/></g></svg>`,
+                'n': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10c1.1 0 2 .9 2 2v2.5c0 .55.45 1 1 1s1-.45 1-1V12c0-2.21-1.79-4-4-4-3.23 0-5.92 2.54-6.2 5.76-.22 2.4-1.83 4.24-3.8 4.24-2.21 0-4-1.79-4-4s1.79-4 4-4c.9 0 1.71.3 2.36.79.6-.55 1.46-.86 2.43-.86 2.21 0 4 1.79 4 4v.5a.5.5 0 0 1-1 0V12c0-1.1-.9-2-2-2zM9.5 24c1.42-1.42 3.58-2.5 6.5-2.5s5.08 1.08 6.5 2.5c-1.42 1.42-3.58 2.5-6.5 2.5s-5.08-1.08-6.5-2.5z"/><path d="M12.5 37c-2.5-1.5-4-4.5-4-7.5 0-4.5 2.5-8.5 6-8.5s6 4 6 8.5c0 3-1.5 6-4 7.5l-2-2.5-2 2.5z"/><path d="M25 18a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" fill="#fff"/><path d="M25 18a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" stroke="none"/></g></svg>`,
+                'b': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2-3.39.97-10.11-.43-13.5 2-3.39-2.43-10.11-1.03-13.5-2zM15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g></svg>`,
+                'q': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM24.5 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM16 8.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM33 9a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/><path d="M9 26c8.5-1.5 19-1.5 27 0l2-12-29 0-2 12z" fill-rule="evenodd"/><path d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c4-1 17-1 21 0" fill="none"/><path d="M10.5 26.5l24 0" fill="none" stroke-linejoin="miter"/><path d="M9 39.5h27v-3H9v3zM12 36.5h21v-3H12v3z" fill-rule="evenodd"/></g></svg>`,
+                'k': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45"><g fill="#000" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.5 11.63V6M20 8h5" stroke-linecap="butt"/><path d="M22.5 25c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/><path d="M11.5 38.5h22v-4h-22v4z" stroke-linecap="butt"/><path d="M11.5 34.5h22l-1.5-6.5-19 0-1.5 6.5z" stroke-linecap="butt"/><path d="M11.5 34.5c0 .83.67 1.5 1.5 1.5h19c.83 0 1.5-.67 1.5-1.5v-1c0-.83-.67-1.5-1.5-1.5h-19c-.83 0-1.5.67-1.5 1.5v1z" stroke-linecap="butt"/><path d="M22.5 11.5l-3.5 13.5h7L22.5 11.5z" stroke-linejoin="miter"/></g></svg>`
+            }
+        };
+
+        function renderBoard() {
+            boardElement.innerHTML = '';
+            for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+                const square = document.createElement('div');
+                square.classList.add('square', (x + y) % 2 === 0 ? 'light' : 'dark');
+                square.dataset.x = x;
+                square.dataset.y = y;
+
+                const piece = game.board[y][x];
+                if (piece) {
+                    const pieceElement = document.createElement('div');
+                    pieceElement.classList.add('piece');
+                    pieceElement.innerHTML = pieceSVGs[piece.color][piece.type];
+                    square.appendChild(pieceElement);
+                }
+                
+                const isMove = validMoves.find(m => m.to.x === x && m.to.y === y);
+                if (isMove) {
+                    const moveIndicator = document.createElement('div');
+                    if(isMove.capture) moveIndicator.classList.add('capture-move-ring');
+                    else moveIndicator.classList.add('valid-move-dot');
+                    square.appendChild(moveIndicator);
+                }
+                boardElement.appendChild(square);
+            }
+            updateStatus();
+            updateEvalBar();
+        }
+
+        function updateStatus() {
+            let statusText;
+            if (game.gameOver) {
+                if (game.winner === 'draw') {
+                    statusText = 'Game Over: Stalemate';
+                    showMessage('Draw by Stalemate!');
+                } else {
+                    const winnerName = game.winner === 'w' ? 'White' : 'Black';
+                    statusText = `Game Over: ${winnerName} wins!`;
+                    showMessage(`${winnerName} wins by Checkmate!`);
+                }
+            } else {
+                statusText = `${game.turn === 'w' ? 'White' : 'Black'}'s Turn`;
+                if (game.isInCheck(game.turn)) statusText += ' (Check)';
+            }
+            statusElement.textContent = statusText;
+        }
+
+        function updateEvalBar() {
+            const evalScore = ai.evaluateBoard(game);
+            const maxEval = 1000;
+            const clampedScore = Math.max(-maxEval, Math.min(maxEval, evalScore));
+            const whiteAdvantagePercent = (clampedScore + maxEval) / (2 * maxEval) * 100;
+            evalBar.style.height = `${whiteAdvantagePercent}%`;
+        }
+        
+        function showMessage(text, duration = 2500) {
+            messageText.textContent = text;
+            messageBox.style.opacity = '1';
+            messageBox.style.transform = 'translate(-50%, -50%) scale(1)';
+            setTimeout(() => {
+                messageBox.style.opacity = '0';
+                messageBox.style.transform = 'translate(-50%, -50%) scale(0.9)';
+            }, duration);
+        }
+
+        function uciToMove(uci) {
+            const fromX = uci.charCodeAt(0) - 'a'.charCodeAt(0);
+            const fromY = 8 - parseInt(uci[1]);
+            const toX = uci.charCodeAt(2) - 'a'.charCodeAt(0);
+            const toY = 8 - parseInt(uci[3]);
+            return { from: { x: fromX, y: fromY }, to: { x: toX, y: toY } };
+        }
+
+        async function makeAIMove() {
+            if (game.gameOver) return;
+            statusElement.textContent = "AI is thinking...";
+
+            let moveMade = false;
+
+            if (game.history.length < 16) {
+                aiModeElement.textContent = "AI Mode: Lichess Opening Book";
+                const fen = game.toFEN();
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+                    const response = await fetch(`https://explorer.lichess.ovh/lichess?fen=${fen}&speeds=blitz,rapid,classical`, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    const data = await response.json();
+                    if (data.moves && data.moves.length > 0) {
+                        const apiMove = data.moves[0].uci;
+                        const move = uciToMove(apiMove);
+                        const fullMove = game.getAllMoves('b').find(m => m.from.x === move.from.x && m.from.y === move.from.y && m.to.x === move.to.x && m.to.y === move.to.y);
+                        if(fullMove) {
+                            game.move(fullMove);
+                            moveMade = true;
+                        }
+                    }
+                } catch (error) { 
+                    console.log("Lichess API call failed or timed out, switching to internal logic.", error.name);
+                }
+            }
+            
+            if (!moveMade) {
+                aiModeElement.textContent = "AI Mode: Internal Logic";
+                setTimeout(() => {
+                    const bestMove = ai.findBestMove(game);
+                    if (bestMove) game.move(bestMove);
+                    else console.log("AI has no legal moves.");
+                    renderBoard();
+                }, 50);
+            } else {
+                renderBoard();
+            }
+        }
+
+        function startNewGame() {
+            game = new Chess();
+            selectedSquare = null;
+            validMoves = [];
+            aiModeElement.textContent = "AI Mode: Internal Logic";
+            analysisBox.classList.add('hidden');
+            analysisText.textContent = 'Click "Get AI Analysis" to get a hint.';
+            renderBoard();
+        }
+        
+        function onDragStart(e) {
+            if (game.gameOver || game.turn !== 'w') return;
+            
+            const sourceSquareElement = e.target.closest('.square');
+            if (!sourceSquareElement) return;
+            
+            const pieceEl = sourceSquareElement.querySelector('.piece');
+            if (!pieceEl) return;
+            
+            const { x, y } = sourceSquareElement.dataset;
+            selectedSquare = { x: parseInt(x), y: parseInt(y) };
+            
+            const pieceData = game.board[y][x];
+            if (!pieceData || pieceData.color !== 'w') {
+                selectedSquare = null;
+                return;
+            }
+
+            validMoves = game.getMoves(selectedSquare);
+            if (validMoves.length === 0) {
+                selectedSquare = null;
+                return;
+            }
+
+            draggedPieceElement = pieceEl.cloneNode(true);
+            draggedPieceElement.classList.add('dragging');
+            
+            // --- FIX: Set explicit size for dragged piece ---
+            const rect = sourceSquareElement.getBoundingClientRect();
+            draggedPieceElement.style.width = `${rect.width}px`;
+            draggedPieceElement.style.height = `${rect.height}px`;
+            
+            document.body.appendChild(draggedPieceElement);
+            pieceEl.style.opacity = '0.3';
+            
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            draggedPieceElement.style.left = `${clientX - rect.width / 2}px`;
+            draggedPieceElement.style.top = `${clientY - rect.height / 2}px`;
+
+            renderBoard();
+        }
+
+        function onDragMove(e) {
+            if (!draggedPieceElement) return;
+            e.preventDefault();
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            const rect = draggedPieceElement.getBoundingClientRect();
+            draggedPieceElement.style.left = `${clientX - rect.width / 2}px`;
+            draggedPieceElement.style.top = `${clientY - rect.height / 2}px`;
+        }
+
+        function onDragEnd(e) {
+            if (!draggedPieceElement) return;
+
+            const clientX = e.clientX || e.changedTouches[0].clientX;
+            const clientY = e.clientY || e.changedTouches[0].clientY;
+            const dropTarget = document.elementFromPoint(clientX, clientY);
+            const destSquareElement = dropTarget ? dropTarget.closest('.square') : null;
+
+            if (destSquareElement) {
+                const { x, y } = destSquareElement.dataset;
+                const to = { x: parseInt(x), y: parseInt(y) };
+                const move = validMoves.find(m => m.to.x === to.x && m.to.y === to.y);
+
+                if (move) {
+                    game.move(move);
+                    setTimeout(makeAIMove, 250);
+                }
+            }
+            
+            document.body.removeChild(draggedPieceElement);
+            draggedPieceElement = null;
+            selectedSquare = null;
+            validMoves = [];
+            renderBoard();
+        }
+
+        async function getAiAnalysis() {
+            if (game.gameOver) {
+                analysisText.textContent = "The game is over. Start a new one!";
+                analysisBox.classList.remove('hidden');
+                return;
+            }
+            analysisText.textContent = "Getting analysis from AI Coach...";
+            analysisBox.classList.remove('hidden');
+
+            const fen = game.toFEN();
+            const prompt = `You are an expert chess coach. The current board state in FEN notation is: ${fen}. It is White's turn to move. Please provide a brief strategic analysis for White. What are the key threats? What are the main opportunities? Suggest 2-3 good candidate moves for White and explain the reasoning behind them.`;
+            
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    analysisText.textContent = text;
+                } else {
+                    analysisText.textContent = "Sorry, the AI coach is busy. Please try again.";
+                    console.error("Gemini API Error:", result);
+                }
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                analysisText.textContent = "Could not connect to the AI coach. Check your connection and try again.";
+            }
+        }
+
+        async function getTrashTalk() {
+            const prompt = "You are a witty, trash-talking chess AI. Generate a short, clever, and slightly arrogant taunt to say to your human opponent during a game of chess. Keep it under 15 words.";
+            
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const result = await response.json();
+                 if (result.candidates && result.candidates.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text.replace(/"/g, '');
+                    showMessage(`AI says: "${text}"`, 3500);
+                } else {
+                    console.error("Gemini API Error:", result);
+                }
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+            }
+        }
+
+
+        resetButton.addEventListener('click', startNewGame);
+        
+        boardElement.addEventListener('mousedown', onDragStart);
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+        
+        boardElement.addEventListener('touchstart', onDragStart);
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd);
+
+        analysisButton.addEventListener('click', getAiAnalysis);
+        trashTalkButton.addEventListener('click', getTrashTalk);
+
+        window.onload = startNewGame;
+    </script>
+</body>
+</html>
